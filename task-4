@@ -1,0 +1,1585 @@
+import pyresparser  # Library for parsing resumes
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression  # Example classification model
+from sklearn.metrics import accuracy_score 
+
+# Function to extract relevant features from a parsed resume
+def extract_features(resume_data):
+    skills = resume_data['skills']
+    job_titles = [job['title'] for job in resume_data['work_experience']]
+    descriptions = [job['description'] for job in resume_data['work_experience']]
+    
+    # Combine skills and job descriptions for feature extraction
+    text_data = " ".join(skills + job_titles + descriptions)
+    return text_data 
+
+# Load pre-labeled CV data (assuming you have a labeled dataset with personality traits)
+df = pd.read_csv("cv_data.csv") 
+
+# Preprocessing
+X = df['resume_text'].apply(lambda x: extract_features(pyresparser.parse_resume(x)))
+y = df['personality_trait']  # Target personality trait (e.g., "Openness", "Conscientiousness") 
+
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42) 
+
+# Feature engineering with TF-IDF
+vectorizer = TfidfVectorizer(max_features=1000)
+X_train_vectorized = vectorizer.fit_transform(X_train)
+X_test_vectorized = vectorizer.transform(X_test) 
+
+# Train a machine learning model (example: Logistic Regression)
+model = LogisticRegression()
+model.fit(X_train_vectorized, y_train) 
+
+# Predict personality trait on a new CV
+def predict_personality(new_cv_text):
+    features = extract_features(pyresparser.parse_resume(new_cv_text))
+    features_vectorized = vectorizer.transform([features])
+    prediction = model.predict(features_vectorized)
+    return prediction[0] 
+
+# Example usage
+new_cv_text = "Your resume text here"
+predicted_trait = predict_personality(new_cv_text)
+print("Predicted personality trait:", predicted_trait)
+
+                    -
+ from fileinput import filename
+import os
+import string
+import pymysql
+from flask import Flask, render_template, request, redirect, flash, send_file, session
+from passlib.hash import sha256_crypt
+import gc
+from werkzeug.utils import secure_filename
+import csv
+import base64,random
+import time,datetime
+from pyresparser import ResumeParser
+from pdfminer3.layout import LAParams, LTTextBox
+from pdfminer3.pdfpage import PDFPage
+from pdfminer3.pdfinterp import PDFResourceManager
+from pdfminer3.pdfinterp import PDFPageInterpreter
+from pdfminer3.converter import TextConverter
+from PIL import Image
+from Courses import ds_course,web_course,android_course,ios_course,uiux_course,resume_videos,interview_videos
+import pafy
+import plotly.express as px
+import io,random
+from werkzeug.utils import secure_filename
+import pandas
+import sklearn
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.naive_bayes import MultinomialNB
+from test_utils import *
+
+UPLOAD_FOLDER = 'C:/Users/Phoebe E. A. Memsah/Downloads/web_platform_for_aptitude_assessment-master/web_platform_for_aptitude_assessment-master/CV/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+
+app = Flask(_name_)
+app.debug = True
+app.secret_key = 'some secret key'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+connection = pymysql.connect(
+    host='localhost',
+    user='root',
+    password='',
+    db='Quiz_Database',
+    port=3306,
+    use_unicode=True,
+    charset="utf8"
+)
+
+
+
+@app.route("/")
+def home():
+    return render_template("/home.html")
+
+
+@app.route("/aboutus.html")
+def aboutus():
+    return render_template("/aboutus.html")
+
+@app.route('/index.html')
+def homem():
+	return render_template('index.html')
+
+@app.route('/prediction', methods=["GET", "POST"])
+def prediction():
+	if request.method == "POST" and "username" in request.form:
+		username = request.form['username']
+		model_prediction, tweets = get_prediction(username)
+		return render_template('prediction.html', username=username, predicted_type=model_prediction, tweets=tweets)
+
+@app.route("/cvreport.html")
+def cvreport():
+    cursor = connection.cursor()
+    save_image_path = os.path.join(app.config['UPLOAD_FOLDER'], session['cv'])
+    resume_data = ResumeParser(save_image_path).get_extracted_data()
+    if resume_data:
+        ## Get the whole resume data
+        resume_text = pdf_reader(save_image_path)
+        insert_data(resume_data['name'], resume_data['email'],resume_data['no_of_pages'], str(resume_data['skills']), session['id'])
+    command = "select Name, Email_ID, Page_No, Actual_skills from user_data where stud_id =%s"
+    cursor.execute(command, session['id'])
+    res = cursor.fetchall()
+
+    ### Resume writing recommendation
+    resume_text = pdf_reader(save_image_path)
+    resume_score = 0
+    
+    if 'Objective' in resume_text:
+        resume_score = resume_score+20
+        a = '[+] Awesome! You have added Objective'
+    else:
+        a = '[-] According to our recommendation please add your career objective, it will give your career intension to the Recruiters.'
+        
+
+    if 'Declaration'  in resume_text:
+        resume_score = resume_score + 20
+        b = '[+] Awesome! You have added Declaration✍'
+    else:
+        b ='[-] According to our recommendation please add Declaration✍. It will give the assurance that everything written on your resume is true and fully acknowledged by you'
+
+    if 'Hobbies' or 'Interests'in resume_text:
+        resume_score = resume_score + 20
+        c = '[+] Awesome! You have added your Hobbies⚽'
+    else:
+        c = '[-] According to our recommendation please add Hobbies⚽. It will show your persnality to the Recruiters and give the assurance that you are fit for this role or not.'
+
+    if 'Achievements' in resume_text:
+        resume_score = resume_score + 20
+        d = '[+] Awesome! You have added your Achievements🏅'
+    else:
+        d = '[+] According to our recommendation please add Achievements🏅. It will show that you are capable for the required position.'
+
+    if 'Projects' in resume_text:
+        resume_score = resume_score + 20
+        e = '[+] Awesome! You have added your Projects👨‍💻'
+    else:
+        e = '[-] According to our recommendation please add Projects👨‍💻. It will show that you have done work related the required position or not.'
+    
+    f = '*Resume Score📝*"'
+   
+    score = 0
+    for percent_complete in range(resume_score):
+                    score +=1
+                    time.sleep(0.1)
+    g = 'Your Resume Writing Score:' + str(score)
+    print(" Your Resume Writing Score: ", str(score))
+    h = '** Note: This score is calculated based on the content that you have added in your Resume. **'
+    
+    connection.commit()
+    cursor.close()
+    return render_template("/cvreport.html", data = res, value1=a, value2 =b, value3 = c, value4 =d, value5 =e, value6= f, value7 =g, value8=h)
+    
+    
+   
+        
+
+@app.route("/reportview.html", methods=['GET'])
+def reportview():
+    cursor = connection.cursor()
+
+    mark1 = session['sciscore'] 
+    mark2 = session['comscore'] 
+    mark3 = session['humscore'] 
+    mark4 = session['aptitude'] 
+    percentage1 = mark1 
+    percentage2 = mark2 
+    percentage3 = mark3 
+    percentage4 = mark4 
+    percentage5 = (mark1 + mark2 + mark3 + mark4)
+    query = "update student_profile set science = %s , commerce = %s, humanities = %s, aptitude = %s, total =%s where stud_id = %s"
+    cursor.execute(query, (percentage1, percentage2, percentage3, percentage4, percentage5, session['id']))
+    connection.commit()
+    cursor.close()
+    return render_template("/studenthome.html")
+   
+
+
+@app.route("/reportgeneration")
+def reportgeneration():
+    cursor = connection.cursor()
+    command = "select stud_first_name, stud_last_name, stud_class, science, humanities, commerce, aptitude, total from student_profile where stud_id =%s "
+    cursor.execute(command, session['id'])
+    res = cursor.fetchall()
+    cursor.close()
+    return render_template("/reportgeneration.html", data=res)
+
+
+
+
+@app.route("/questionpaper")
+def questionpaper():
+    cursor = connection.cursor()
+    command = "select * from question_details"
+    cursor.execute(command)
+    res = cursor.fetchall()
+    cursor.close()
+    return render_template("/questionpaper.html", data=res)
+
+
+@app.route("/adddesc", methods=['POST', 'GET'])
+def adddesc():
+    cursor = connection.cursor()
+    if request.method == "POST":
+        command = "select count(*) from student_description where stud_id =%s"
+        cursor.execute(command, session['id'])
+        res = cursor.fetchone()[0]
+        if res == 0:
+            desc1 = request.form['des1']
+            desc2 = request.form['des2']
+            desc3 = request.form['des3']
+            id = session['id']
+            command = "insert into student_description (stud_id,descrip1,descrip2,descrip3) values(%s,%s,%s,%s)"
+            cursor.execute(command, (id, desc1, desc2, desc3))
+            connection.commit()
+            cursor.close()
+            return render_template("/studenthome.html")
+        else:
+            flash("You have already aswered to these questions")
+            return render_template("/studentdescription.html")
+    else:
+        cursor = connection.cursor()
+        command = "select count(*) from student_description where stud_id =%s"
+        cursor.execute(command, session['id'])
+        res = cursor.fetchone()[0]
+        cursor.close()
+        if res == 0:
+            return render_template("/studentdescription.html")
+        else:
+            flash("You have already answered to these questions")
+            return render_template("/studentdescription.html")
+
+
+@app.route("/adddata", methods=['POST'])
+def adddata():
+    if request.method == "POST":
+        qid = request.form['btn']
+        qpid = request.form['qp_id']
+        cursor = connection.cursor()
+        cmd = "select count(question_id) from question_paper where question_paper_id =%s and question_id =%s"
+        cursor.execute(cmd, (qpid, qid))
+        res = cursor.fetchone()[0]
+        if res == 0:
+            command = "insert into question_paper(question_paper_id, question_id, question_type) select %s, question_details.question_id, question_details.question_type from question_details WHERE question_details.question_id =%s "
+            cursor.execute(command, (qpid, qid))
+            connection.commit()
+            cursor.close()
+            flash("Successful")
+            return redirect("/questionpaper")
+        else:
+            flash("Question is already added to the question paper")
+            return redirect("/questionpaper")
+
+
+@app.route("/home.html")
+def intro():
+    return render_template("/home.html")
+
+
+@app.route("/login.html")
+def login():
+    return render_template("/login.html")
+
+
+@app.route("/contactus.html")
+def contactus():
+    return render_template("/contactus.html")
+
+
+@app.route('/check_user', methods=['POST'])  # login function
+def check_user():
+    if request.method == 'POST':
+        email = request.form['email']
+        user_password = request.form['password']
+        cursor = connection.cursor()
+        com = "select * from login where u_email='" + email + "'"
+        result = cursor.execute(com)
+        cursor.close()
+        if not result:
+            flash("Invalid Login")
+            return render_template("/login.html")
+        else:
+            cursor = connection.cursor()
+            com = "select * from login where u_email='" + email + "'"
+            cursor.execute(com)
+            data = cursor.fetchone()[2]
+            com = "select * from login where u_email='" + email + "'"
+            cursor.execute(com)
+            utype = cursor.fetchone()[3]
+            com = "select * from login where u_email='" + email + "'"
+            cursor.execute(com)
+            uid = cursor.fetchone()[0]
+            cursor.close()
+            if utype == "Applicant":
+                if sha256_crypt.verify(user_password, data):
+                    session['logged_in'] = True
+                    session['type'] = "Applicant"
+                    session['username'] = email
+                    session['id'] = uid
+                    return render_template("/studenthome.html")
+                else:
+                    flash("Invalid Login")
+                gc.collect()
+                return redirect("/login.html")
+            elif utype == "admin":
+                if sha256_crypt.verify(user_password, data):
+                    session['logged_in'] = True
+                    session['type'] = "admin"
+                    session['username'] = email
+                    session['id'] = uid
+                    return render_template("/adminhome.html")
+                else:
+                    flash("Invalid Login")
+                    gc.collect()
+                    return redirect("/login.html")
+            elif utype == "personnel":
+                if sha256_crypt.verify(user_password, data):
+                    session['logged_in'] = True
+                    session['type'] = "personnel"
+                    session['username'] = email
+                    session['id'] = uid
+                    return render_template("/instructorhome.html")
+                else:
+                    flash("Invalid Login")
+                    gc.collect()
+                    return redirect('/login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.pop('user', None)
+    return render_template("/login.html")
+
+
+@app.route('/logoutprofile', methods=['POST'])  # if not registered
+def logoutprofile():
+    id = session['username']
+    cursor = connection.cursor()
+    cmd = "delete from login where u_email = '" + id + "' "
+    cursor.execute(cmd)
+    connection.commit()
+    session.pop('user', None)
+    cursor.close()
+    flash("Sorry registration unsuccessful")
+    return render_template("/signup.html")
+
+
+@app.route("/studenthome.html")
+def stud_home():
+    return render_template("/studenthome.html")
+
+
+@app.route("/signup.html")
+def index():
+    return render_template("/signup.html")
+
+
+@app.route("/instructorhome.html")
+def instructorhome():
+    return render_template("/instructorhome.html")
+
+
+@app.route("/startquiz.html", methods=['GET'])
+def startquiz():
+    if request.method == "GET":
+        cursor = connection.cursor()
+        qry = "select count(*) from active_question_paper where stud_id =%s"
+        cursor.execute(qry, session['id'])
+        res = cursor.fetchone()[0]
+        if res == 0:
+            session['countquestion'] = 0
+            session['sciscore'] = 0
+            session['humscore'] = 0
+            session['comscore'] = 0
+            session['aptitude'] = 0
+            query = "SELECT DISTINCT question_paper_id FROM question_paper where question_paper_id order by  rand() limit 1"
+            cursor.execute(query)
+            row = cursor.fetchone()
+            name = row[0] if row else None
+            session['paper'] = name
+            qry = "insert into active_question_paper(question_paper_id, question_id, question_type, stud_id, attend) select question_paper.question_paper_id, question_paper.question_id, question_paper.question_type,'%s','0'from question_paper WHERE question_paper.question_paper_id = '%s'"
+            cursor.execute(qry, (session['id'], session['paper']))
+            connection.commit()
+            return render_template("/startquiz.html")
+        else:
+            qry = "select question_paper_id from active_question_paper where stud_id = %s and attend ='0'"
+            cursor.execute(qry, session['id'])
+            row = cursor.fetchone()
+            name = row[0] if row else None
+            session['paper'] = name
+            connection.commit()
+            flash("Welcome Back")
+            return render_template("/startquiz.html")
+
+
+@app.route("/quiz.html")
+def quiz():
+    cursor = connection.cursor()
+    qry1 = "SELECT COUNT(attend) FROM active_question_paper WHERE attend= '0' "
+    cursor.execute(qry1)
+    row = cursor.fetchone()
+    name = row[0] if row else None
+    result = name
+    if result == 0:
+        qry1 = "delete from active_question_paper where question_paper_id = %s"
+        cursor.execute(qry1, (session['paper'],))
+        connection.commit()
+        return render_template("/studenthome.html")
+    else:
+        query = "select question_id from active_question_paper where question_paper_id= %s and attend='0' and stud_id =%s limit 1"
+        cursor.execute(query, (session['paper'], session['id']))
+        row = cursor.fetchone()
+        res = row[0] if row else None
+        session['quiz'] = res
+        qry = "select question_type from active_question_paper where question_id= %s and attend='0' and stud_id =%s"
+        cursor.execute(qry, (res, session['id']))
+        row = cursor.fetchone()
+        name = row[0] if row else None
+        qtype = name
+        if qtype == 110 or qtype == 210 or qtype == 310:
+            query1 = "SELECT question_paper.question_paper_id,question_details.question_id,question_details. * from question_paper RIGHT JOIN question_details ON question_paper.question_id= question_details.question_id WHERE question_paper.question_paper_id ='%s' and question_paper.question_id='%s' "
+            cursor.execute(query1, (session['paper'], session['quiz']))
+            res = cursor.fetchall()
+            connection.commit()
+            return render_template("/quiz.html", data=res)
+        elif qtype == 120 or qtype == 220 or qtype == 320:
+            command = "select image from question_details where question_id =%s"
+            cursor.execute(command, session['quiz'])
+            d = cursor.fetchone()[0]
+            connection.commit()
+            a = "questionimage/" + d
+            command = "select * from question_details where question_id =%s"
+            cursor.execute(command, session['quiz'])
+            res = cursor.fetchall()
+            return render_template("/displayquiz.html", data=res, image=a)
+        elif qtype == 130 or qtype == 230 or qtype == 330:
+            command = "select * from question_details where question_id =%s"
+            cursor.execute(command, session['quiz'])
+            res = cursor.fetchone()
+            qid = res[0]
+            qs = res[1]
+            op1 = "questionimage/" + res[2]
+            op2 = "questionimage/" + res[3]
+            op3 = "questionimage/" + res[4]
+            op4 = "questionimage/" + res[5]
+            d = "questionimage/" + res[8]
+            return render_template("/displayallimage.html", image=d, op1=op1, op2=op2, op3=op3, op4=op4, qs=qs, qid=qid)
+        elif qtype == 140 or qtype == 240 or qtype == 340:
+            command = "select * from question_details where question_id =%s"
+            cursor.execute(command, session['quiz'])
+            res = cursor.fetchone()
+            qid = res[0]
+            qs = res[1]
+            op1 = "questionimage/" + res[2]
+            op2 = "questionimage/" + res[3]
+            op3 = "questionimage/" + res[4]
+            op4 = "questionimage/" + res[5]
+            return render_template("/onlyoptiondisplay.html", op1=op1, op2=op2, op3=op3, op4=op4, qs=qs, qid=qid)
+        else:
+            query1 = "SELECT question_paper.question_paper_id,question_details.question_id,question_details. * from question_paper RIGHT JOIN question_details ON question_paper.question_id= question_details.question_id WHERE question_paper.question_paper_id ='%s' and question_paper.question_id='%s' "
+            cursor.execute(query1, (session['paper'], session['quiz']))
+            res = cursor.fetchall()
+            connection.commit()
+            return render_template("/quiz.html", data=res)
+
+
+@app.route("/settings.html")
+def settings():
+    return render_template("/settings.html")
+
+
+@app.route("/selectquestionpaper")
+def selques():
+    cursor = connection.cursor()
+    command = "SELECT DISTINCT question_paper_id FROM question_paper"
+    cursor.execute(command)
+    res = cursor.fetchall()
+    return render_template("selectquestionpaper.html", data=res)
+
+
+@app.route("/questionweightage", methods=['GET', 'POST'])
+def questionweightage():
+    if request.method == "POST":
+        session['quesid'] = request.form['option']
+        cursor = connection.cursor()
+        command = "SELECT question_details.question_id, question_details.question, question_paper.science, question_paper.commerce, question_paper.humanities, question_paper.apt FROM question_details RIGHT JOIN question_paper ON question_paper.question_id= question_details.question_id WHERE question_paper.question_paper_id= '" + \
+                  session['quesid'] + "'"
+        cursor.execute(command)
+        res = cursor.fetchall()
+        return render_template("/questionweightage.html", data=res)
+    else:
+        cursor = connection.cursor()
+        command = "SELECT question_details.question_id, question_details.question, question_paper.science, question_paper.commerce, question_paper.humanities,question_paper.apt FROM question_details RIGHT JOIN question_paper ON question_paper.question_id= question_details.question_id WHERE question_paper.question_paper_id= '" + \
+                  session['quesid'] + "'"
+        cursor.execute(command)
+        res = cursor.fetchall()
+        return render_template("/questionweightage.html", data=res)
+
+
+@app.route("/questionweightageedit/<id>")
+def questionweightageedit(id):
+    cursor = connection.cursor()
+    command = "select question_id,science,commerce,humanities,apt from question_paper where question_id =%s and question_paper_id =%s"
+    cursor.execute(command, (id, session['quesid']))
+    res = cursor.fetchall()
+    return render_template("/questionweightageadd.html", data=res)
+
+
+@app.route("/questionweightageadd", methods=['POST'])
+def addquestionweight():
+    if request.method == 'POST':
+        qid = request.form['id']
+        sci = request.form['des1']
+        comm = request.form['des2']
+        humani = request.form['des3']
+        apt = request.
+-----------------------------
+import pickle
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+import contractions
+import re
+from nltk.tokenize import word_tokenize
+import pandas as pd
+import snscrape.modules.twitter as sntwitter
+
+# Using TwitterSearchScraper to scrape data and append tweets to list
+def get_tweets(username):
+    tweets = []
+    for i, tweet in enumerate(sntwitter.TwitterSearchScraper(f'from:{username}').get_items()):
+        tweets.append(tweet.content)
+        if i == 50: break
+    return tweets
+
+def load_files():
+    try:
+        with open("saved-models/RandomForest_E-I.sav", "rb") as file:
+            ei_classifier = pickle.load(file)
+        with  open("saved-models/RandomForest_N-S.sav", "rb") as file:
+            ns_classifier = pickle.load(file)
+        with open("saved-models/SVM_F-T.sav", "rb") as file:
+            ft_classifier = pickle.load(file)
+        with  open("saved-models/Xgboost_J-P.sav", "rb") as file:
+            jp_classifier = pickle.load(file)
+    except FileNotFoundError:
+        print("Model not found!")
+
+    try:
+        with open("vectorizer/vectorizer.pkl", "rb") as file:
+            vectorizer = pickle.load(file)
+    except FileNotFoundError:
+        print("Tokenizer not found!")
+
+    return ei_classifier, ns_classifier, ft_classifier, jp_classifier, vectorizer
+    
+def preprocessing(text):
+    stopword_list = stopwords.words("english")
+    lemmatizer = WordNetLemmatizer()
+    
+    text = contractions.fix(text)
+    text = text.lower()
+    text = re.sub(r'@([a-zA-Z0-9_]{1,50})', '', text)
+    text = re.sub(r'#([a-zA-Z0-9_]{1,50})', '', text)
+    text = re.sub(r'http[s]?://\S+', '', text)
+    text = re.sub(r'[^A-Za-z0-9]+', ' ', text)
+    text = re.sub(r' +', ' ', text)
+    text = " ".join([word for word in text.split() if not len(word) <3])
+    text = word_tokenize(text)
+    text = [word for word in text if not word in stopword_list]
+    text = [lemmatizer.lemmatize(word) for word in text]
+    text = " ".join(text)
+    return text
+
+def get_prediction(username):
+    ei_classifier, ns_classifier, ft_classifier, jp_classifier, vectorizer = load_files()
+    tweets = get_tweets(username)
+    text   = " ".join(tweets)
+    text   = preprocessing(text)
+    text   = vectorizer.transform([text])
+    
+    prediction = ""
+    e_or_i = "E" if ei_classifier.predict(text)[0] == 1 else "I"
+    n_or_s = "N" if ns_classifier.predict(text)[0] == 1 else "S"
+    f_or_t = "F" if ft_classifier.predict(text)[0] == 1 else "T"
+    j_or_p = "J" if jp_classifier.predict(text)[0] == 1 else "P"
+    prediction = e_or_i + n_or_s + f_or_t + j_or_p
+
+    return prediction, tweets
+0----------------------------------------
+      {
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Python Hand Gesture Recognition (Checkpoint 2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This checkpoint is at the end of Objective 2.\n",
+    "\n",
+    "At this point, your code should be able to get input from the camera and display it on the screen as if it were a mirror. It should also draw a rectangle where the user should put their hand."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Header: Importing libraries and creating global variables"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import cv2\n",
+    "\n",
+    "# Hold the background frame for background subtraction.\n",
+    "background = None\n",
+    "# Hold the hand's data so all its details are in one place.\n",
+    "hand = None\n",
+    "# Variables to count how many frames have passed and to set the size of the window.\n",
+    "frames_elapsed = 0\n",
+    "FRAME_HEIGHT = 200\n",
+    "FRAME_WIDTH = 300\n",
+    "# Humans come in a ton of beautiful shades and colors.\n",
+    "# Try editing these if your program has trouble recognizing your skin tone.\n",
+    "CALIBRATION_TIME = 30\n",
+    "BG_WEIGHT = 0.5\n",
+    "OBJ_THRESHOLD = 18"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### HandData: A class to hold all the hand's details and flags"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class HandData:\n",
+    "    top = (0,0)\n",
+    "    bottom = (0,0)\n",
+    "    left = (0,0)\n",
+    "    right = (0,0)\n",
+    "    centerX = 0\n",
+    "    prevCenterX = 0\n",
+    "    isInFrame = False\n",
+    "    isWaving = False\n",
+    "    fingers = None\n",
+    "    \n",
+    "    def _init_(self, top, bottom, left, right, centerX):\n",
+    "        self.top = top\n",
+    "        self.bottom = bottom\n",
+    "        self.left = left\n",
+    "        self.right = right\n",
+    "        self.centerX = centerX\n",
+    "        self.prevCenterX = 0\n",
+    "        isInFrame = False\n",
+    "        isWaving = False\n",
+    "        \n",
+    "    def update(self, top, bottom, left, right):\n",
+    "        self.top = top\n",
+    "        self.bottom = bottom\n",
+    "        self.left = left\n",
+    "        self.right = right"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### write_on_image(): Write info related to the hand gesture and outline the region of interest"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Here we take the current frame, the number of frames elapsed, and how many fingers we've detected\n",
+    "# so we can print on the screen which gesture is happening (or if the camera is calibrating).\n",
+    "def write_on_image(frame):\n",
+    "    text = \"Searching...\"\n",
+    "\n",
+    "    if frames_elapsed < CALIBRATION_TIME:\n",
+    "        text = \"Calibrating...\"\n",
+    "    elif hand == None or hand.isInFrame == False:\n",
+    "        text = \"No hand detected\"\n",
+    "    else:\n",
+    "        if hand.isWaving:\n",
+    "            text = \"Waving\"\n",
+    "        elif hand.fingers == 0:\n",
+    "            text = \"Rock\"\n",
+    "        elif hand.fingers == 1:\n",
+    "            text = \"Pointing\"\n",
+    "        elif hand.fingers == 2:\n",
+    "            text = \"Scissors\"\n",
+    "    \n",
+    "    cv2.putText(frame, text, (10,20), cv2.FONT_HERSHEY_COMPLEX, 0.4,( 0 , 0 , 0 ),2,cv2.LINE_AA)\n",
+    "    cv2.putText(frame, text, (10,20), cv2.FONT_HERSHEY_COMPLEX, 0.4,(255,255,255),1,cv2.LINE_AA)\n",
+    "\n",
+    "    # Highlight the region of interest.\n",
+    "    cv2.rectangle(frame, (region_left, region_top), (region_right, region_bottom), (255,255,255), 2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Main function: Get input from camera and call functions to understand it"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Our region of interest will be the top right part of the frame.\n",
+    "region_top = 0\n",
+    "region_bottom = int(2 * FRAME_HEIGHT / 3)\n",
+    "region_left = int(FRAME_WIDTH / 2)\n",
+    "region_right = FRAME_WIDTH\n",
+    "\n",
+    "frames_elapsed = 0\n",
+    "\n",
+    "capture = cv2.VideoCapture(0)\n",
+    "\n",
+    "while (True):\n",
+    "    # Store the frame from the video capture and resize it to the window size.\n",
+    "    ret, frame = capture.read()\n",
+    "    frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))\n",
+    "    # Flip the frame over the vertical axis so that it works like a mirror, which is more intuitive to the user.\n",
+    "    frame = cv2.flip(frame, 1)\n",
+    "    \n",
+    "    # Write the action the hand is doing on the screen, and draw the region of interest.\n",
+    "    write_on_image(frame)\n",
+    "    # Show the previously captured frame.\n",
+    "    cv2.imshow(\"Camera Input\", frame)\n",
+    "    frames_elapsed += 1\n",
+    "    # Check if user wants to exit.\n",
+    "    if (cv2.waitKey(1) & 0xFF == ord('x')):\n",
+    "        break\n",
+    "\n",
+    "# When we exit the loop, we have to stop the capture too.\n",
+    "capture.release()\n",
+    "cv2.destroyAllWindows()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Python Hand Gesture Recognition (Checkpoint 4)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This checkpoint is at the end of Objective 4.\n",
+    "\n",
+    "At this point, your code should be able to detect waving by using a function get_hand_data() along with the HandData class's functions."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Header: Importing libraries and creating global variables"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 48,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import cv2\n",
+    "\n",
+    "# Hold the background frame for background subtraction.\n",
+    "background = None\n",
+    "# Hold the hand's data so all its details are in one place.\n",
+    "hand = None\n",
+    "# Variables to count how many frames have passed and to set the size of the window.\n",
+    "frames_elapsed = 0\n",
+    "FRAME_HEIGHT = 200\n",
+    "FRAME_WIDTH = 300\n",
+    "# Humans come in a ton of beautiful shades and colors.\n",
+    "# Try editing these if your program has trouble recognizing your skin tone.\n",
+    "CALIBRATION_TIME = 30\n",
+    "BG_WEIGHT = 0.5\n",
+    "OBJ_THRESHOLD = 18"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### HandData: A class to hold all the hand's details and flags"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 49,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class HandData:\n",
+    "    top = (0,0)\n",
+    "    bottom = (0,0)\n",
+    "    left = (0,0)\n",
+    "    right = (0,0)\n",
+    "    centerX = 0\n",
+    "    prevCenterX = 0\n",
+    "    isInFrame = False\n",
+    "    isWaving = False\n",
+    "    fingers = None\n",
+    "    \n",
+    "    def _init_(self, top, bottom, left, right, centerX):\n",
+    "        self.top = top\n",
+    "        self.bottom = bottom\n",
+    "        self.left = left\n",
+    "        self.right = right\n",
+    "        self.centerX = centerX\n",
+    "        self.prevCenterX = 0\n",
+    "        isInFrame = False\n",
+    "        isWaving = False\n",
+    "        \n",
+    "    def update(self, top, bottom, left, right):\n",
+    "        self.top = top\n",
+    "        self.bottom = bottom\n",
+    "        self.left = left\n",
+    "        self.right = right\n",
+    "        \n",
+    "    def check_for_waving(self, centerX):\n",
+    "        self.prevCenterX = self.centerX\n",
+    "        self.centerX = centerX\n",
+    "        \n",
+    "        if abs(self.centerX - self.prevCenterX > 3):\n",
+    "            self.isWaving = True\n",
+    "        else:\n",
+    "            self.isWaving = False"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### write_on_image(): Write info related to the hand gesture and outline the region of interest"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 50,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Here we take the current frame, the number of frames elapsed, and how many fingers we've detected\n",
+    "# so we can print on the screen which gesture is happening (or if the camera is calibrating).\n",
+    "def write_on_image(frame):\n",
+    "    text = \"Searching...\"\n",
+    "\n",
+    "    if frames_elapsed < CALIBRATION_TIME:\n",
+    "        text = \"Calibrating...\"\n",
+    "    elif hand == None or hand.isInFrame == False:\n",
+    "        text = \"No hand detected\"\n",
+    "    else:\n",
+    "        if hand.isWaving:\n",
+    "            text = \"Waving\"\n",
+    "        elif hand.fingers == 0:\n",
+    "            text = \"Rock\"\n",
+    "        elif hand.fingers == 1:\n",
+    "            text = \"Pointing\"\n",
+    "        elif hand.fingers == 2:\n",
+    "            text = \"Scissors\"\n",
+    "    \n",
+    "    cv2.putText(frame, text, (10,20), cv2.FONT_HERSHEY_COMPLEX, 0.4,( 0 , 0 , 0 ),2,cv2.LINE_AA)\n",
+    "    cv2.putText(frame, text, (10,20), cv2.FONT_HERSHEY_COMPLEX, 0.4,(255,255,255),1,cv2.LINE_AA)\n",
+    "\n",
+    "    # Highlight the region of interest.\n",
+    "    cv2.rectangle(frame, (region_left, region_top), (region_right, region_bottom), (255,255,255), 2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### get_region(): Separate the region of interest and preps it for edge detection"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 51,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_region(frame):\n",
+    "    # Separate the region of interest from the rest of the frame.\n",
+    "    region = frame[region_top:region_bottom, region_left:region_right]\n",
+    "    # Make it grayscale so we can detect the edges more easily.\n",
+    "    region = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)\n",
+    "    # Use a Gaussian blur to prevent frame noise from being labeled as an edge.\n",
+    "    region = cv2.GaussianBlur(region, (5,5), 0)\n",
+    "\n",
+    "    return region"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### get_average(): Create a weighted average of the background for image differencing"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 52,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_average(region):\n",
+    "    # We have to use the global keyword because we want to edit the global variable.\n",
+    "    global background\n",
+    "    # If we haven't captured the background yet, make the current region the background.\n",
+    "    if background is None:\n",
+    "        background = region.copy().astype(\"float\")\n",
+    "        return\n",
+    "    # Otherwise, add this captured frame to the average of the backgrounds.\n",
+    "    cv2.accumulateWeighted(region, background, BG_WEIGHT)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### segment(): Use image differencing to separate the hand from the background"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 53,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Here we use differencing to separate the background from the object of interest.\n",
+    "def segment(region):\n",
+    "    global hand\n",
+    "    # Find the absolute difference between the background and the current frame.\n",
+    "    diff = cv2.absdiff(background.astype(np.uint8), region)\n",
+    "\n",
+    "    # Threshold that region with a strict 0 or 1 ruling so only the foreground remains.\n",
+    "    thresholded_region = cv2.threshold(diff, OBJ_THRESHOLD, 255, cv2.THRESH_BINARY)[1]\n",
+    "\n",
+    "    # Get the contours of the region, which will return an outline of the hand.\n",
+    "    (_, contours, _) = cv2.findContours(thresholded_region.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)\n",
+    "\n",
+    "    # If we didn't get anything, there's no hand.\n",
+    "    if len(contours) == 0:\n",
+    "        if hand is not None:\n",
+    "            hand.isInFrame = False\n",
+    "        return\n",
+    "    # Otherwise return a tuple of the filled hand (thresholded_region), along with the outline (segmented_region).\n",
+    "    else:\n",
+    "        if hand is not None:\n",
+    "            hand.isInFrame = True\n",
+    "        segmented_region = max(contours, key = cv2.contourArea)\n",
+    "        return (thresholded_region, segmented_region)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### get_hand_data(): Find the extremities of the hand and put them in the global hand object"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 54,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_hand_data(thresholded_image, segmented_image):\n",
+    "    global hand\n",
+    "    \n",
+    "    # Enclose the area around the extremities in a convex hull to connect all outcroppings.\n",
+    "    convexHull = cv2.convexHull(segmented_image)\n",
+    "    \n",
+    "    # Find the extremities for the convex hull and store them as points.\n",
+    "    top    = tuple(convexHull[convexHull[:, :, 1].argmin()][0])\n",
+    "    bottom = tuple(convexHull[convexHull[:, :, 1].argmax()][0])\n",
+    "    left   = tuple(convexHull[convexHull[:, :, 0].argmin()][0])\n",
+    "    right  = tuple(convexHull[convexHull[:, :, 0].argmax()][0])\n",
+    "    \n",
+    "    # Get the center of the palm, so we can check for waving and find the fingers.\n",
+    "    centerX = int((left[0] + right[0]) / 2)\n",
+    "    \n",
+    "    # We put all the info into an object for handy extraction (get it? HANDy?)\n",
+    "    if hand == None:\n",
+    "        hand = HandData(top, bottom, left, right, centerX)\n",
+    "    else:\n",
+    "        hand.update(top, bottom, left, right)\n",
+    "    \n",
+    "    # Only check for waving every 6 frames.\n",
+    "    if frames_elapsed % 6 == 0:\n",
+    "        hand.check_for_waving(centerX)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Main function: Get input from camera and call functions to understand it"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 55,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Our region of interest will be the top right part of the frame.\n",
+    "region_top = 0\n",
+    "region_bottom = int(2 * FRAME_HEIGHT / 3)\n",
+    "region_left = int(FRAME_WIDTH / 2)\n",
+    "region_right = FRAME_WIDTH\n",
+    "\n",
+    "frames_elapsed = 0\n",
+    "\n",
+    "capture = cv2.VideoCapture(0)\n",
+    "\n",
+    "while (True):\n",
+    "    # Store the frame from the video capture and resize it to the window size.\n",
+    "    ret, frame = capture.read()\n",
+    "    frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))\n",
+    "    # Flip the frame over the vertical axis so that it works like a mirror, which is more intuitive to the user.\n",
+    "    frame = cv2.flip(frame, 1)\n",
+    "    \n",
+    "    # Separate the region of interest and prep it for edge detection.\n",
+    "    region = get_region(frame)\n",
+    "    if frames_elapsed < CALIBRATION_TIME:\n",
+    "        get_average(region)\n",
+    "    else:\n",
+    "        region_pair = segment(region)\n",
+    "        if region_pair is not None:\n",
+    "            # If we have the regions segmented successfully, show them in another window for the user.\n",
+    "            (thresholded_region, segmented_region) = region_pair\n",
+    "            cv2.drawContours(region, [segmented_region], -1, (255, 255, 255))\n",
+    "            cv2.imshow(\"Segmented Image\", region)\n",
+    "            \n",
+    "            get_hand_data(thresholded_region, segmented_region)\n",
+    "    \n",
+    "    # Write the action the hand is doing on the screen, and draw the region of interest.\n",
+    "    write_on_image(frame)\n",
+    "    # Show the previously captured frame.\n",
+    "    cv2.imshow(\"Camera Input\", frame)\n",
+    "    frames_elapsed += 1\n",
+    "    # Check if user wants to exit.\n",
+    "    if (cv2.waitKey(1) & 0xFF == ord('x')):\n",
+    "        break\n",
+    "        \n",
+    "    if (cv2.waitKey(1) & 0xFF == ord('r')):\n",
+    "        frames_elapsed = 0\n",
+    "\n",
+    "# When we exit the loop, we have to stop the capture too.\n",
+    "capture.release()\n",
+    "cv2.destroyAllWindows()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+----
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Python Hand Gesture Recognition (Checkpoint 5)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This checkpoint is at the end of Objective 5.\n",
+    "\n",
+    "At this point, your code should be fully functional -- it'll recognize waving, pointing, a peace sign (scissors), and a fist (rock). Congrats on making it here!"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Header: Importing libraries and creating global variables"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import cv2\n",
+    "\n",
+    "# Hold the background frame for background subtraction.\n",
+    "background = None\n",
+    "# Hold the hand's data so all its details are in one place.\n",
+    "hand = None\n",
+    "# Variables to count how many frames have passed and to set the size of the window.\n",
+    "frames_elapsed = 0\n",
+    "FRAME_HEIGHT = 200\n",
+    "FRAME_WIDTH = 300\n",
+    "# Humans come in a ton of beautiful shades and colors.\n",
+    "# Try editing these if your program has trouble recognizing your skin tone.\n",
+    "CALIBRATION_TIME = 30\n",
+    "BG_WEIGHT = 0.5\n",
+    "OBJ_THRESHOLD = 18"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### HandData: A class to hold all the hand's details and flags"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class HandData:\n",
+    "    top = (0,0)\n",
+    "    bottom = (0,0)\n",
+    "    left = (0,0)\n",
+    "    right = (0,0)\n",
+    "    centerX = 0\n",
+    "    prevCenterX = 0\n",
+    "    isInFrame = False\n",
+    "    isWaving = False\n",
+    "    fingers = None\n",
+    "    gestureList = []\n",
+    "    \n",
+    "    def _init_(self, top, bottom, left, right, centerX):\n",
+    "        self.top = top\n",
+    "        self.bottom = bottom\n",
+    "        self.left = left\n",
+    "        self.right = right\n",
+    "        self.centerX = centerX\n",
+    "        self.prevCenterX = 0\n",
+    "        isInFrame = False\n",
+    "        isWaving = False\n",
+    "        \n",
+    "    def update(self, top, bottom, left, right):\n",
+    "        self.top = top\n",
+    "        self.bottom = bottom\n",
+    "        self.left = left\n",
+    "        self.right = right\n",
+    "        \n",
+    "    def check_for_waving(self, centerX):\n",
+    "        self.prevCenterX = self.centerX\n",
+    "        self.centerX = centerX\n",
+    "        \n",
+    "        if abs(self.centerX - self.prevCenterX > 3):\n",
+    "            self.isWaving = True\n",
+    "        else:\n",
+    "            self.isWaving = False"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### write_on_image(): Write info related to the hand gesture and outline the region of interest"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Here we take the current frame, the number of frames elapsed, and how many fingers we've detected\n",
+    "# so we can print on the screen which gesture is happening (or if the camera is calibrating).\n",
+    "def write_on_image(frame):\n",
+    "    text = \"Searching...\"\n",
+    "\n",
+    "    if frames_elapsed < CALIBRATION_TIME:\n",
+    "        text = \"Calibrating...\"\n",
+    "    elif hand == None or hand.isInFrame == False:\n",
+    "        text = \"No hand detected\"\n",
+    "    else:\n",
+    "        if hand.isWaving:\n",
+    "            text = \"Waving\"\n",
+    "        elif hand.fingers == 0:\n",
+    "            text = \"Rock\"\n",
+    "        elif hand.fingers == 1:\n",
+    "            text = \"Pointing\"\n",
+    "        elif hand.fingers == 2:\n",
+    "            text = \"Scissors\"\n",
+    "    \n",
+    "    cv2.putText(frame, text, (10,20), cv2.FONT_HERSHEY_COMPLEX, 0.4,( 0 , 0 , 0 ),2,cv2.LINE_AA)\n",
+    "    cv2.putText(frame, text, (10,20), cv2.FONT_HERSHEY_COMPLEX, 0.4,(255,255,255),1,cv2.LINE_AA)\n",
+    "\n",
+    "    # Highlight the region of interest.\n",
+    "    cv2.rectangle(frame, (region_left, region_top), (region_right, region_bottom), (255,255,255), 2)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### get_region(): Separate the region of interest and preps it for edge detection"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_region(frame):\n",
+    "    # Separate the region of interest from the rest of the frame.\n",
+    "    region = frame[region_top:region_bottom, region_left:region_right]\n",
+    "    # Make it grayscale so we can detect the edges more easily.\n",
+    "    region = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)\n",
+    "    # Use a Gaussian blur to prevent frame noise from being labeled as an edge.\n",
+    "    region = cv2.GaussianBlur(region, (5,5), 0)\n",
+    "\n",
+    "    return region"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### get_average(): Create a weighted average of the background for image differencing"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_average(region):\n",
+    "    # We have to use the global keyword because we want to edit the global variable.\n",
+    "    global background\n",
+    "    # If we haven't captured the background yet, make the current region the background.\n",
+    "    if background is None:\n",
+    "        background = region.copy().astype(\"float\")\n",
+    "        return\n",
+    "    # Otherwise, add this captured frame to the average of the backgrounds.\n",
+    "    cv2.accumulateWeighted(region, background, BG_WEIGHT)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### segment(): Use image differencing to separate the hand from the background"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Here we use differencing to separate the background from the object of interest.\n",
+    "def segment(region):\n",
+    "    global hand\n",
+    "    # Find the absolute difference between the background and the current frame.\n",
+    "    diff = cv2.absdiff(background.astype(np.uint8), region)\n",
+    "\n",
+    "    # Threshold that region with a strict 0 or 1 ruling so only the foreground remains.\n",
+    "    thresholded_region = cv2.threshold(diff, OBJ_THRESHOLD, 255, cv2.THRESH_BINARY)[1]\n",
+    "\n",
+    "    # Get the contours of the region, which will return an outline of the hand.\n",
+    "    (_, contours, _) = cv2.findContours(thresholded_region.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)\n",
+    "\n",
+    "    # If we didn't get anything, there's no hand.\n",
+    "    if len(contours) == 0:\n",
+    "        if hand is not None:\n",
+    "            hand.isInFrame = False\n",
+    "        return\n",
+    "    # Otherwise return a tuple of the filled hand (thresholded_region), along with the outline (segmented_region).\n",
+    "    else:\n",
+    "        if hand is not None:\n",
+    "            hand.isInFrame = True\n",
+    "        segmented_region = max(contours, key = cv2.contourArea)\n",
+    "        return (thresholded_region, segmented_region)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### get_hand_data(): Find the extremities of the hand and put them in the global hand object"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_hand_data(thresholded_image, segmented_image):\n",
+    "    global hand\n",
+    "    \n",
+    "    # Enclose the area around the extremities in a convex hull to connect all outcroppings.\n",
+    "    convexHull = cv2.convexHull(segmented_image)\n",
+    "    \n",
+    "    # Find the extremities for the convex hull and store them as points.\n",
+    "    top    = tuple(convexHull[convexHull[:, :, 1].argmin()][0])\n",
+    "    bottom = tuple(convexHull[convexHull[:, :, 1].argmax()][0])\n",
+    "    left   = tuple(convexHull[convexHull[:, :, 0].argmin()][0])\n",
+    "    right  = tuple(convexHull[convexHull[:, :, 0].argmax()][0])\n",
+    "    \n",
+    "    # Get the center of the palm, so we can check for waving and find the fingers.\n",
+    "    centerX = int((left[0] + right[0]) / 2)\n",
+    "    \n",
+    "    # We put all the info into an object for handy extraction (get it? HANDy?)\n",
+    "    if hand == None:\n",
+    "        hand = HandData(top, bottom, left, right, centerX)\n",
+    "    else:\n",
+    "        hand.update(top, bottom, left, right)\n",
+    "    \n",
+    "    # Only check for waving every 6 frames.\n",
+    "    if frames_elapsed % 6 == 0:\n",
+    "        hand.check_for_waving(centerX)\n",
+    "    \n",
+    "    # We count the number of fingers up every frame, but only change hand.fingers if\n",
+    "    # 12 frames have passed, to prevent erratic gesture counts.\n",
+    "    hand.gestureList.append(count_fingers(thresholded_image))\n",
+    "    if frames_elapsed % 12 == 0:\n",
+    "        hand.fingers = most_frequent(hand.gestureList)\n",
+    "        hand.gestureList.clear()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### count_fingers(): Count the number of fingers using a line intersecting fingertips"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def count_fingers(thresholded_image):\n",
+    "    \n",
+    "    # Find the height at which we will draw the line to count fingers.\n",
+    "    line_height = int(hand.top[1] + (0.2 * (hand.bottom[1] - hand.top[1])))\n",
+    "    \n",
+    "    # Get the linear region of interest along where the fingers would be.\n",
+    "    line = np.zeros(thresholded_image.shape[:2], dtype=int)\n",
+    "    \n",
+    "    # Draw a line across this region of interest, where the fingers should be.\n",
+    "    cv2.line(line, (thresholded_image.shape[1], line_height), (0, line_height), 255, 1)\n",
+    "    \n",
+    "    # Do a bitwise AND to find where the line intersected the hand -- this is where the fingers are.\n",
+    "    line = cv2.bitwise_and(thresholded_image, thresholded_image, mask = line.astype(np.uint8))\n",
+    "    \n",
+    "    # Get the line's new contours. The contours are basically just little lines formed by gaps \n",
+    "    # in the big line across the fingers, so each would be a finger unless it's very wide.\n",
+    "    (_, contours, _) = cv2.findContours(line.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)\n",
+    "    \n",
+    "    fingers = 0\n",
+    "    \n",
+    "    # Count the fingers by making sure the contour lines are \"finger-sized\", i.e. not too wide.\n",
+    "    # This prevents a \"rock\" gesture from being mistaken for a finger.\n",
+    "    for curr in contours:\n",
+    "        width = len(curr)\n",
+    "        \n",
+    "        if width < 3 * abs(hand.right[0] - hand.left[0]) / 4 and width > 5:\n",
+    "            fingers += 1\n",
+    "    \n",
+    "    return fingers"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### most_frequent(): Returns the value in a list that appears most frequently"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def most_frequent(input_list):\n",
+    "    dict = {}\n",
+    "    count = 0\n",
+    "    most_freq = 0\n",
+    "    \n",
+    "    for item in reversed(input_list):\n",
+    "        dict[item] = dict.get(item, 0) + 1\n",
+    "        if dict[item] >= count :\n",
+    "            count, most_freq = dict[item], item\n",
+    "    \n",
+    "    return most_freq"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Main function: Get input from camera and call functions to understand it"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Our region of interest will be the top right part of the frame.\n",
+    "region_top = 0\n",
+    "region_bottom = int(2 * FRAME_HEIGHT / 3)\n",
+    "region_left = int(FRAME_WIDTH / 2)\n",
+    "region_right = FRAME_WIDTH\n",
+    "\n",
+    "frames_elapsed = 0\n",
+    "\n",
+    "capture = cv2.VideoCapture(1)\n",
+    "\n",
+    "while (True):\n",
+    "    # Store the frame from the video capture and resize it to the window size.\n",
+    "    ret, frame = capture.read()\n",
+    "    frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))\n",
+    "    # Flip the frame over the vertical axis so that it works like a mirror, which is more intuitive to the user.\n",
+    "    frame = cv2.flip(frame, 1)\n",
+    "    \n",
+    "    # Separate the region of interest and prep it for edge detection.\n",
+    "    region = get_region(frame)\n",
+    "    if frames_elapsed < CALIBRATION_TIME:\n",
+    "        get_average(region)\n",
+    "    else:\n",
+    "        region_pair = segment(region)\n",
+    "        if region_pair is not None:\n",
+    "            # If we have the regions segmented successfully, show them in another window for the user.\n",
+    "            (thresholded_region, segmented_region) = region_pair\n",
+    "            cv2.drawContours(region, [segmented_region], -1, (255, 255, 255))\n",
+    "            cv2.imshow(\"Segmented Image\", region)\n",
+    "            \n",
+    "            get_hand_data(thresholded_region, segmented_region)\n",
+    "    \n",
+    "    # Write the action the hand is doing on the screen, and draw the region of interest.\n",
+    "    write_on_image(frame)\n",
+    "    # Show the previously captured frame.\n",
+    "    cv2.imshow(\"Camera Input\", frame)\n",
+    "    frames_elapsed += 1\n",
+    "    # Check if user wants to exit.\n",
+    "    if (cv2.waitKey(1) & 0xFF == ord('x')):\n",
+    "        break\n",
+    "\n",
+    "# When we exit the loop, we have to stop the capture too.\n",
+    "capture.release()\n",
+    "cv2.destroyAllWindows()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+            
